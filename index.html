@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roube o Banco - Protótipo 2D</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #222;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 4px solid #ffd700; /* Borda dourada estilo banco */
+            background-color: #333; /* Cor do fundo da agência */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+// --- CONFIGURAÇÕES DO JOGO ---
+const GRAVIDADE = 0.5;
+let pontos = 0;
+let jogoAtivo = true;
+
+// --- PERSONAGEM (O LADRÃO CORREDOR) ---
+const jogador = {
+    x: 50,
+    y: 300,
+    largura: 30,
+    altura: 40,
+    velocidadeX: 0,
+    velocidadeY: 0,
+    velocidadeMovimento: 5,
+    forcaPulo: 12,
+    noChao: false,
+    cor: "#3498db" // Azul (representando o herói do jogo)
+};
+
+// --- O MUNDO / PLATAFORMAS ---
+const plataformas = [
+    { x: 0, y: 380, largura: 800, altura: 20 },   // Chão principal
+    { x: 200, y: 280, largura: 150, height: 15 },  // Plataforma 1
+    { x: 450, y: 200, largura: 150, height: 15 },  // Plataforma 2
+    { x: 150, y: 130, largura: 150, height: 15 }   // Plataforma 3
+];
+
+// --- ITENS COLETÁVEIS (SACOS DE DINHEIRO) ---
+let itens = [
+    { x: 260, y: 240, largura: 20, altura: 25, coletado: false, cor: "#2ecc71" },
+    { x: 510, y: 160, largura: 20, altura: 25, coletado: false, cor: "#2ecc71" },
+    { x: 200, y: 90, largura: 20, altura: 25, coletado: false, cor: "#2ecc71" }
+];
+
+// --- OBSTÁCULOS (LASER DE SEGURANÇA MÓVEL) ---
+const laser = {
+    x: 450,
+    y: 350,
+    largura: 15,
+    altura: 30,
+    velocidadeX: 2,
+    limiteEsquerda: 400,
+    limiteDireita: 700,
+    cor: "#e74c3c" // Vermelho perigo
+};
+
+// --- CONTROLES ---
+const teclas = {};
+window.addEventListener("keydown", (e) => teclas[e.code] = true);
+window.addEventListener("keyup", (e) => teclas[e.code] = false);
+
+// --- LÓGICA DE COLISÃO ---
+function verificarColisao(obj1, obj2) {
+    return obj1.x < obj2.x + (obj2.largura || obj2.width) &&
+           obj1.x + obj1.largura > obj2.x &&
+           obj1.y < obj2.y + (obj2.altura || obj2.height) &&
+           obj1.y + obj1.altura > obj2.y;
+}
+
+// --- ATUALIZAÇÃO DO JOGO ---
+function atualizar() {
+    if (!jogoAtivo) return;
+
+    // Movimentação Esquerda / Direita
+    if (teclas["ArrowRight"] || teclas["KeyD"]) {
+        jogador.velocidadeX = jogador.velocidadeMovimento;
+    } else if (teclas["ArrowLeft"] || teclas["KeyA"]) {
+        jogador.velocidadeX = -jogador.velocidadeMovimento;
+    } else {
+        jogador.velocidadeX = 0;
+    }
+
+    // Pulo (Estilo Mario/Sonic - Só pula se estiver no chão)
+    if ((teclas["ArrowUp"] || teclas["Space"] || teclas["KeyW"]) && jogador.noChao) {
+        jogador.velocidadeY = -jogador.forcaPulo;
+        jogador.noChao = false;
+    }
+
+    // Aplicar Gravidade
+    jogador.velocidadeY += GRAVIDADE;
+
+    // Atualizar Posições
+    jogador.x += jogador.velocidadeX;
+    jogador.y += jogador.velocidadeY;
+
+    // Movimentação do Laser de Segurança
+    laser.x += laser.velocidadeX;
+    if (laser.x > laser.limiteDireita || laser.x < laser.limiteEsquerda) {
+        laser.velocidadeX *= -1; // Inverte a direção
+    }
+
+    // Colisão com Plataformas e Chão
+    jogador.noChao = false;
+    plataformas.forEach(plat => {
+        // Verifica se o jogador está caindo em cima da plataforma
+        if (jogador.x + jogador.largura > plat.x &&
+            jogador.x < plat.x + plat.largura &&
+            jogador.y + jogador.altura <= plat.y &&
+            jogador.y + jogador.altura + jogador.velocidadeY >= plat.y) {
+            
+            jogador.velocidadeY = 0;
+            jogador.y = plat.y - jogador.altura;
+            jogador.noChao = true;
+        }
+    });
+
+    // Limites da Tela (Não deixar sair do mapa)
+    if (jogador.x < 0) jogador.x = 0;
+    if (jogador.x + jogador.largura > canvas.width) jogador.x = canvas.width - jogador.largura;
+
+    // Coleta de Itens
+    itens.forEach(item => {
+        if (!item.coletado && verificarColisao(jogador, item)) {
+            item.coletado = true;
+            pontos += 100;
+        }
+    });
+
+    // Colisão com Obstáculo (Laser) -> Game Over
+    if (verificarColisao(jogador, laser)) {
+        jogoAtivo = false;
+    }
+}
+
+// --- RENDERIZAÇÃO (DESENHAR NA TELA) ---
+function desenhar() {
+    // Limpar tela anterior
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Desenhar Plataformas
+    ctx.fillStyle = "#7f8c8d";
+    plataformas.forEach(plat => {
+        ctx.fillRect(plat.x, plat.y, plat.largura, plat.altura || plat.height);
+    });
+
+    // Desenhar Itens (Sacos de Dinheiro)
+    itens.forEach(item => {
+        if (!item.coletado) {
+            ctx.fillStyle = item.cor;
+            ctx.fillRect(item.x, item.y, item.largura, item.altura);
+            // Detalhe do cifrão no saco
+            ctx.fillStyle = "#fff";
+            ctx.font = "12px Arial";
+            ctx.fillText("$", item.x + 6, item.y + 17);
+        }
+    });
+
+    // Desenhar Obstáculo (Laser/Guarda)
+    ctx.fillStyle = laser.cor;
+    ctx.fillRect(laser.x, laser.y, laser.largura, laser.altura);
+
+    // Desenhar Jogador
+    ctx.fillStyle = jogador.cor;
+    ctx.fillRect(jogador.x, jogador.y, jogador.largura, jogador.altura);
+
+    // Interface de Texto (Placar)
+    ctx.fillStyle = "#ffd700";
+    ctx.font = "20px Arial";
+    ctx.fillText(`Dinheiro Roubado: $${pontos}`, 20, 30);
+
+    // Tela de Game Over
+    if (!jogoAtivo) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#e74c3c";
+        ctx.font = "40px Arial";
+        ctx.fillText("VOCÊ FOI PEGO!", canvas.width / 2 - 150, canvas.height / 2);
+        ctx.fillStyle = "#fff";
+        ctx.font = "20px Arial";
+        ctx.fillText("Atualize a página para tentar novamente", canvas.width / 2 - 170, canvas.height / 2 + 40);
+    }
+}
+
+// --- LOOP DO JOGO ---
+function loop() {
+    atualizar();
+    desenhar();
+    requestAnimationFrame(loop);
+}
+
+// Iniciar o jogo
+loop();
+</script>
+
+</body>
+</html>
